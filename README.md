@@ -27,11 +27,12 @@ A real-time, event-driven log analysis system built with **Spring Boot**, **Apac
    cd ai-log-monitor
    
 2. Build the apps
+   
    cd log-producer && mvn clean package -DskipTests
 cd ../log-consumer && mvn clean package -DskipTests
 cd ..
 
-3. start the stack
+4. start the stack
   docker-compose up -d
   
-4. Access the Dashboard: http://localhost:8082/dashboard  
+5. Access the Dashboard: http://localhost:8082/dashboard  
