@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Log Monitor Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    .title { font-size: 22px; font-weight: 600; color: #f1f5f9; }
+    .subtitle { font-size: 13px; color: #64748b; margin-top: 3px; }
+    .badge-live { font-size: 12px; padding: 4px 12px; border-radius: 20px; background: #052e16; color: #4ade80; font-weight: 500; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 2rem; }
+    .stat { background: #1e2330; border-radius: 12px; padding: 1.25rem; border: 1px solid #2d3748; }
+    .stat-label { font-size: 12px; color: #64748b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 28px; font-weight: 600; }
+    .stat-value.total { color: #f1f5f9; }
+    .stat-value.error { color: #f87171; }
+    .stat-value.warn { color: #fbbf24; }
+    .stat-value.info { color: #60a5fa; }
+    .chart-section { background: #1e2330; border: 1px solid #2d3748; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; }
+    .section-title { font-size: 14px; font-weight: 500; color: #94a3b8; margin-bottom: 1.25rem; }
+    .bar-chart { display: flex; align-items: flex-end; gap: 12px; height: 100px; }
+    .bar-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 0 0 80px; }
+    .bar { width: 100%; border-radius: 4px 4px 0 0; transition: height 0.4s ease; min-height: 4px; }
+    .bar-label { font-size: 12px; color: #64748b; }
+    .bar-val { font-size: 13px; font-weight: 600; }
+    .bar-val.error { color: #f87171; }
+    .bar-val.warn { color: #fbbf24; }
+    .bar-val.info { color: #60a5fa; }
+    .controls { display: flex; gap: 8px; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
+    .filter-btn { font-size: 13px; padding: 6px 16px; border-radius: 20px; border: 1px solid #2d3748; background: transparent; color: #94a3b8; cursor: pointer; transition: all 0.15s; }
+    .filter-btn:hover { border-color: #4a5568; color: #e2e8f0; }
+    .filter-btn.active { background: #2d3748; color: #f1f5f9; border-color: #4a5568; font-weight: 500; }
+    .refresh-btn { margin-left: auto; font-size: 13px; padding: 6px 16px; border-radius: 20px; border: 1px solid #1d4ed8; background: transparent; color: #60a5fa; cursor: pointer; }
+    .table-wrap { background: #1e2330; border: 1px solid #2d3748; border-radius: 12px; overflow: auto; margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; min-width: 900px; }
+    thead th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-weight: 500; text-align: left; padding: 12px 16px; border-bottom: 1px solid #2d3748; background: #181d2a; white-space: nowrap; }
+    tbody td { font-size: 13px; padding: 12px 16px; border-bottom: 1px solid #1a2030; color: #cbd5e1; vertical-align: top; word-break: break-word; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #242938; }
+    .col-id { width: 55px; }
+    .col-level { width: 85px; }
+    .col-service { width: 140px; }
+    .col-message { width: 200px; }
+    .col-analysis { width: 340px; }
+    .level-badge { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 600; display: inline-block; }
+    .level-ERROR { background: #450a0a; color: #f87171; }
+    .level-WARN  { background: #451a03; color: #fbbf24; }
+    .level-INFO  { background: #0c1a3a; color: #60a5fa; }
+    .analysis-box { background: #0f1a2e; border-left: 2px solid #1d4ed8; border-radius: 0 6px 6px 0; padding: 8px 10px; font-size: 12px; color: #93c5fd; line-height: 1.6; max-height: 120px; overflow-y: auto; }
+    .analysis-empty { font-size: 12px; color: #374151; font-style: italic; }
+    .empty { text-align: center; padding: 3rem; color: #4a5568; font-size: 14px; }
+    .status-bar { display: flex; justify-content: space-between; font-size: 12px; color: #4a5568; padding: 0 4px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .dot-green { background: #4ade80; }
+    .dot-red { background: #f87171; }
+    @media (max-width: 640px) { .stats { grid-template-columns: repeat(2, 1fr); } body { padding: 1rem; } }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <div class="title">AI Log Monitor</div>
+      <div class="subtitle">Real-time log analysis · Auto-refreshes every 10s</div>
+    </div>
+    <span class="badge-live">● Live</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Total Logs</div><div class="stat-value total" id="s-total">—</div></div>
+    <div class="stat"><div class="stat-label">Errors</div><div class="stat-value error" id="s-error">—</div></div>
+    <div class="stat"><div class="stat-label">Warnings</div><div class="stat-value warn" id="s-warn">—</div></div>
+    <div class="stat"><div class="stat-label">Info</div><div class="stat-value info" id="s-info">—</div></div>
+  </div>
+
+  <div class="chart-section">
+    <div class="section-title">Severity breakdown</div>
+    <div class="bar-chart" id="bar-chart"><div style="color:#4a5568;font-size:13px">Loading...</div></div>
+  </div>
+
+  <div class="controls">
+    <button class="filter-btn active" onclick="setFilter('ALL', this)">All</button>
+    <button class="filter-btn" onclick="setFilter('ERROR', this)">Errors</button>
+    <button class="filter-btn" onclick="setFilter('WARN', this)">Warnings</button>
+    <button class="filter-btn" onclick="setFilter('INFO', this)">Info</button>
+    <button class="refresh-btn" onclick="fetchData()">↻ Refresh</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-id">ID</th>
+          <th class="col-level">Level</th>
+          <th class="col-service">Service</th>
+          <th class="col-message">Message</th>
+          <th class="col-analysis">AI Analysis</th>
+        </tr>
+      </thead>
+      <tbody id="log-body">
+        <tr><td colspan="5" class="empty">Loading logs...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="status-bar">
+    <span id="status-text"><span class="dot dot-red"></span>Connecting to http://localhost:8082...</span>
+    <span id="last-updated"></span>
+  </div>
+
+  <script>
+    let allLogs = [];
+    let currentFilter = 'ALL';
+
+    function setFilter(f, btn) {
+      currentFilter = f;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderTable();
+    }
+
+    function renderTable() {
+      const logs = currentFilter === 'ALL' ? allLogs : allLogs.filter(l => l.level === currentFilter);
+      const tbody = document.getElementById('log-body');
+      if (!logs.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty">No logs found</td></tr>';
+        return;
+      }
+      tbody.innerHTML = [...logs].reverse().map(l => `
+        <tr>
+          <td style="color:#4a5568">${l.id}</td>
+          <td><span class="level-badge level-${l.level}">${l.level}</span></td>
+          <td style="color:#94a3b8;font-size:12px">${l.service || '—'}</td>
+          <td>${l.message || '—'}</td>
+          <td>${l.analysis ? `<div class="analysis-box">${l.analysis}</div>` : '<span class="analysis-empty">No analysis</span>'}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderChart(stats) {
+      const items = [
+        { label: 'ERROR', val: stats.errors || 0, color: '#7f1d1d', cls: 'error' },
+        { label: 'WARN',  val: stats.warnings || 0, color: '#78350f', cls: 'warn' },
+        { label: 'INFO',  val: stats.info || 0, color: '#1e3a5f', cls: 'info' },
+      ];
+      const maxVal = Math.max(...items.map(i => i.val), 1);
+      document.getElementById('bar-chart').innerHTML = items.map(i => `
+        <div class="bar-col">
+          <div class="bar-val ${i.cls}">${i.val}</div>
+          <div class="bar" style="height:${Math.round((i.val / maxVal) * 70)}px;background:${i.color}"></div>
+          <div class="bar-label">${i.label}</div>
+        </div>
+      `).join('');
+    }
+
+    async function fetchData() {
+      try {
+        const [logsRes, statsRes] = await Promise.all([
+          fetch('http://localhost:8082/api/logs'),
+          fetch('http://localhost:8082/api/logs/stats')
+        ]);
+        allLogs = await logsRes.json();
+        const stats = await statsRes.json();
+        document.getElementById('s-total').textContent = stats.total || 0;
+        document.getElementById('s-error').textContent = stats.errors || 0;
+        document.getElementById('s-warn').textContent = stats.warnings || 0;
+        document.getElementById('s-info').textContent = stats.info || 0;
+        renderChart(stats);
+        renderTable();
+        const now = new Date();
+        document.getElementById('last-updated').textContent = 'Last updated: ' + now.toLocaleTimeString();
+        document.getElementById('status-text').innerHTML = '<span class="dot dot-green"></span>Connected · ' + allLogs.length + ' logs loaded';
+      } catch (e) {
+        document.getElementById('status-text').innerHTML = '<span class="dot dot-red"></span>Cannot connect — make sure log-consumer is running on port 8082';
+        document.getElementById('log-body').innerHTML = '<tr><td colspan="5" class="empty">Start log-consumer on port 8082 to see logs</td></tr>';
+      }
+    }
+
+    fetchData();
+    setInterval(fetchData, 10000);
+  </script>
+</body>
+</html>

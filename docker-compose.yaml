@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # --- Infrastructure ---
+  mysql:
+    image: mysql:8
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: logmonitor
+      MYSQL_USER: loguser
+      MYSQL_PASSWORD: logpass
+    ports:
+      - "3306:3306"
+    networks:
+      - log-monitor-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - log-monitor-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # IMPORTANT: Use 'kafka' for internal docker communication
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - log-monitor-network
+
+  # --- Your Spring Boot Applications ---
+  log-producer:
+    build: ./log-producer
+    container_name: log-producer
+    depends_on:
+      - kafka
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - log-monitor-network
+
+  log-consumer:
+    build: ./log-consumer
+    container_name: log-consumer
+    depends_on:
+      - mysql
+      - kafka
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/logmonitor
+      - SPRING_DATASOURCE_USERNAME=loguser
+      - SPRING_DATASOURCE_PASSWORD=logpass
+      # Accessing Ollama on your Arch host from inside Docker
+      - OLLAMA_API_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - log-monitor-network
+
+networks:
+  log-monitor-network:
+    driver: bridge
